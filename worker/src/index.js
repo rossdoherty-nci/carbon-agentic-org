@@ -23,6 +23,145 @@ const MODEL = "gemini-3.5-flash";
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
 const CARBON_INTENSITY_URL = "https://api.carbonintensity.org.uk/intensity";
 
+// ---------------------------------------------------------------------------
+// Strict output schemas — one per agent. Passing these as responseSchema
+// switches Gemini to grammar-constrained JSON generation, which cannot
+// produce syntactically invalid JSON (unlike responseMimeType alone, which
+// is closer to an instruction than a hard guarantee).
+// ---------------------------------------------------------------------------
+
+const SCHEMAS = {
+  researcher: {
+    type: "OBJECT",
+    properties: {
+      headline_finding: { type: "STRING" },
+      scope_breakdown: { type: "STRING" },
+      regulatory_exposure: { type: "STRING" },
+      grid_context: {
+        type: "OBJECT",
+        properties: {
+          actual_intensity: { type: "NUMBER" },
+          forecast_intensity: { type: "NUMBER" },
+          commentary: { type: "STRING" },
+        },
+        required: ["commentary"],
+      },
+      opportunity_summary: { type: "STRING" },
+    },
+    required: [
+      "headline_finding",
+      "scope_breakdown",
+      "regulatory_exposure",
+      "grid_context",
+      "opportunity_summary",
+    ],
+  },
+
+  designer: {
+    type: "OBJECT",
+    properties: {
+      chosen_framework: { type: "STRING" },
+      product_concept: { type: "STRING" },
+      required_inputs: { type: "ARRAY", items: { type: "STRING" } },
+      output_requirements: { type: "STRING" },
+      ux_principles: { type: "ARRAY", items: { type: "STRING" } },
+    },
+    required: [
+      "chosen_framework",
+      "product_concept",
+      "required_inputs",
+      "output_requirements",
+      "ux_principles",
+    ],
+  },
+
+  maker: {
+    type: "OBJECT",
+    properties: {
+      total_estimated_kgco2e: { type: "NUMBER" },
+      emissions_by_category: {
+        type: "ARRAY",
+        items: {
+          type: "OBJECT",
+          properties: {
+            category: { type: "STRING" },
+            kgco2e: { type: "NUMBER" },
+          },
+          required: ["category", "kgco2e"],
+        },
+      },
+      calculation_trace: { type: "ARRAY", items: { type: "STRING" } },
+      data_sources: {
+        type: "ARRAY",
+        items: {
+          type: "OBJECT",
+          properties: {
+            source: { type: "STRING" },
+            fetched_at_utc: { type: "STRING" },
+          },
+          required: ["source", "fetched_at_utc"],
+        },
+      },
+      confidence_notes: { type: "STRING" },
+      headline_for_client: { type: "STRING" },
+    },
+    required: [
+      "total_estimated_kgco2e",
+      "emissions_by_category",
+      "calculation_trace",
+      "data_sources",
+      "confidence_notes",
+      "headline_for_client",
+    ],
+  },
+
+  communicator: {
+    type: "OBJECT",
+    properties: {
+      client_summary: { type: "STRING" },
+      public_disclosure_snippet: { type: "STRING" },
+      marketing_angle: { type: "STRING" },
+      caveats_to_retain: { type: "ARRAY", items: { type: "STRING" } },
+    },
+    required: [
+      "client_summary",
+      "public_disclosure_snippet",
+      "marketing_angle",
+      "caveats_to_retain",
+    ],
+  },
+
+  manager: {
+    type: "OBJECT",
+    properties: {
+      engagement_summary: { type: "STRING" },
+      consistency_check: { type: "STRING" },
+      strategic_alignment: { type: "STRING" },
+      assurance_verdict: {
+        type: "STRING",
+        enum: ["Certified", "Certified with caveats", "Not ready for release"],
+      },
+      next_steps: { type: "ARRAY", items: { type: "STRING" } },
+    },
+    required: [
+      "engagement_summary",
+      "consistency_check",
+      "strategic_alignment",
+      "assurance_verdict",
+      "next_steps",
+    ],
+  },
+
+  concierge: {
+    type: "OBJECT",
+    properties: {
+      action: { type: "STRING", enum: ["answer", "run_pipeline"] },
+      message: { type: "STRING" },
+    },
+    required: ["action", "message"],
+  },
+};
+
 const PROMPTS = {
   researcher: __RESEARCHER_PROMPT__,
   designer: __DESIGNER_PROMPT__,
@@ -77,9 +216,7 @@ async function fetchLiveClientActivityData(env) {
   };
 }
 
-async function callAgent(env, systemPrompt, userPayload) {
-  // responseMimeType: "application/json" makes Gemini return clean JSON
-  // directly — no markdown fences to strip.
+async function callAgent(env, systemPrompt, userPayload, schema) {
   const resp = await fetch(`${GEMINI_URL}?key=${env.GOOGLE_API_KEY}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -100,6 +237,7 @@ async function callAgent(env, systemPrompt, userPayload) {
       generationConfig: {
         maxOutputTokens: 4000,
         responseMimeType: "application/json",
+        responseSchema: schema,
         thinkingConfig: { thinkingLevel: "low" },
       },
     }),
@@ -110,7 +248,16 @@ async function callAgent(env, systemPrompt, userPayload) {
   }
   const data = await resp.json();
   const text = data.candidates[0].content.parts[0].text;
-  return JSON.parse(text);
+  try {
+    return JSON.parse(text);
+  } catch (parseErr) {
+    // Safety net: if parsing ever fails again despite the schema, surface
+    // the raw model output so the actual problem is visible immediately
+    // instead of needing another round of guesswork.
+    throw new Error(
+      `JSON parse failed (${parseErr.message}). Raw model output (first 1500 chars): ${text.slice(0, 1500)}`
+    );
+  }
 }
 
 async function runPipeline(env) {
@@ -126,10 +273,10 @@ async function runPipeline(env) {
     client_activity_data: clientActivity,
     live_grid_carbon_intensity: gridIntensity,
   };
-  const researcherOutput = await callAgent(env, PROMPTS.researcher, researcherInput);
+  const researcherOutput = await callAgent(env, PROMPTS.researcher, researcherInput, SCHEMAS.researcher);
   steps.push({ agent: "Researcher", input: researcherInput, output: researcherOutput });
 
-  const designerOutput = await callAgent(env, PROMPTS.designer, researcherOutput);
+  const designerOutput = await callAgent(env, PROMPTS.designer, researcherOutput, SCHEMAS.designer);
   steps.push({ agent: "Designer", input: researcherOutput, output: designerOutput });
 
   const makerInput = {
@@ -137,10 +284,10 @@ async function runPipeline(env) {
     client_activity_data: clientActivity,
     live_grid_carbon_intensity: gridIntensity,
   };
-  const makerOutput = await callAgent(env, PROMPTS.maker, makerInput);
+  const makerOutput = await callAgent(env, PROMPTS.maker, makerInput, SCHEMAS.maker);
   steps.push({ agent: "Maker", input: makerInput, output: makerOutput });
 
-  const communicatorOutput = await callAgent(env, PROMPTS.communicator, makerOutput);
+  const communicatorOutput = await callAgent(env, PROMPTS.communicator, makerOutput, SCHEMAS.communicator);
   steps.push({ agent: "Communicator", input: makerOutput, output: communicatorOutput });
 
   const managerInput = {
@@ -149,7 +296,7 @@ async function runPipeline(env) {
     calculation_result: makerOutput,
     disclosure_and_messaging_package: communicatorOutput,
   };
-  const managerOutput = await callAgent(env, PROMPTS.manager, managerInput);
+  const managerOutput = await callAgent(env, PROMPTS.manager, managerInput, SCHEMAS.manager);
   steps.push({ agent: "Manager", input: managerInput, output: managerOutput });
 
   return {
@@ -177,6 +324,7 @@ async function runConcierge(env, transcript, visitorMessage, history) {
       generationConfig: {
         maxOutputTokens: 800,
         responseMimeType: "application/json",
+        responseSchema: SCHEMAS.concierge,
         thinkingConfig: { thinkingLevel: "low" },
       },
     }),
@@ -187,7 +335,13 @@ async function runConcierge(env, transcript, visitorMessage, history) {
   }
   const data = await resp.json();
   const text = data.candidates[0].content.parts[0].text;
-  return JSON.parse(text);
+  try {
+    return JSON.parse(text);
+  } catch (parseErr) {
+    throw new Error(
+      `JSON parse failed (${parseErr.message}). Raw model output (first 1500 chars): ${text.slice(0, 1500)}`
+    );
+  }
 }
 
 export default {

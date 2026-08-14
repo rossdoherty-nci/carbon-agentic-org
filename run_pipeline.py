@@ -41,6 +41,132 @@ DOCS_RESULTS_PATH = os.path.join(os.path.dirname(__file__), "docs", "results.jso
 
 CARBON_INTENSITY_URL = "https://api.carbonintensity.org.uk/intensity"
 
+# ---------------------------------------------------------------------------
+# Strict output schemas — one per agent. Passing these as response_schema
+# switches Gemini to grammar-constrained JSON generation, which cannot
+# produce syntactically invalid JSON (unlike responseMimeType alone, which
+# is closer to an instruction than a hard guarantee).
+# ---------------------------------------------------------------------------
+
+SCHEMAS = {
+    "researcher": {
+        "type": "OBJECT",
+        "properties": {
+            "headline_finding": {"type": "STRING"},
+            "scope_breakdown": {"type": "STRING"},
+            "regulatory_exposure": {"type": "STRING"},
+            "grid_context": {
+                "type": "OBJECT",
+                "properties": {
+                    "actual_intensity": {"type": "NUMBER"},
+                    "forecast_intensity": {"type": "NUMBER"},
+                    "commentary": {"type": "STRING"},
+                },
+                "required": ["commentary"],
+            },
+            "opportunity_summary": {"type": "STRING"},
+        },
+        "required": [
+            "headline_finding",
+            "scope_breakdown",
+            "regulatory_exposure",
+            "grid_context",
+            "opportunity_summary",
+        ],
+    },
+    "designer": {
+        "type": "OBJECT",
+        "properties": {
+            "chosen_framework": {"type": "STRING"},
+            "product_concept": {"type": "STRING"},
+            "required_inputs": {"type": "ARRAY", "items": {"type": "STRING"}},
+            "output_requirements": {"type": "STRING"},
+            "ux_principles": {"type": "ARRAY", "items": {"type": "STRING"}},
+        },
+        "required": [
+            "chosen_framework",
+            "product_concept",
+            "required_inputs",
+            "output_requirements",
+            "ux_principles",
+        ],
+    },
+    "maker": {
+        "type": "OBJECT",
+        "properties": {
+            "total_estimated_kgco2e": {"type": "NUMBER"},
+            "emissions_by_category": {
+                "type": "ARRAY",
+                "items": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "category": {"type": "STRING"},
+                        "kgco2e": {"type": "NUMBER"},
+                    },
+                    "required": ["category", "kgco2e"],
+                },
+            },
+            "calculation_trace": {"type": "ARRAY", "items": {"type": "STRING"}},
+            "data_sources": {
+                "type": "ARRAY",
+                "items": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "source": {"type": "STRING"},
+                        "fetched_at_utc": {"type": "STRING"},
+                    },
+                    "required": ["source", "fetched_at_utc"],
+                },
+            },
+            "confidence_notes": {"type": "STRING"},
+            "headline_for_client": {"type": "STRING"},
+        },
+        "required": [
+            "total_estimated_kgco2e",
+            "emissions_by_category",
+            "calculation_trace",
+            "data_sources",
+            "confidence_notes",
+            "headline_for_client",
+        ],
+    },
+    "communicator": {
+        "type": "OBJECT",
+        "properties": {
+            "client_summary": {"type": "STRING"},
+            "public_disclosure_snippet": {"type": "STRING"},
+            "marketing_angle": {"type": "STRING"},
+            "caveats_to_retain": {"type": "ARRAY", "items": {"type": "STRING"}},
+        },
+        "required": [
+            "client_summary",
+            "public_disclosure_snippet",
+            "marketing_angle",
+            "caveats_to_retain",
+        ],
+    },
+    "manager": {
+        "type": "OBJECT",
+        "properties": {
+            "engagement_summary": {"type": "STRING"},
+            "consistency_check": {"type": "STRING"},
+            "strategic_alignment": {"type": "STRING"},
+            "assurance_verdict": {
+                "type": "STRING",
+                "enum": ["Certified", "Certified with caveats", "Not ready for release"],
+            },
+            "next_steps": {"type": "ARRAY", "items": {"type": "STRING"}},
+        },
+        "required": [
+            "engagement_summary",
+            "consistency_check",
+            "strategic_alignment",
+            "assurance_verdict",
+            "next_steps",
+        ],
+    },
+}
+
 
 def load_prompt(filename: str) -> str:
     """Load an agent's system prompt from its markdown file.
@@ -87,12 +213,13 @@ def fetch_live_client_activity_data() -> dict:
     }
 
 
-def call_agent(api_key: str, system_prompt: str, user_payload: dict) -> dict:
+def call_agent(api_key: str, system_prompt: str, user_payload: dict, schema: dict) -> dict:
     """Call one agent with its system prompt and the prior agent's structured
     output (or the initial live data), and parse its JSON response.
 
-    Uses Gemini's responseMimeType: "application/json" so the model returns
-    clean JSON directly, with no markdown fences to strip."""
+    Uses Gemini's responseSchema (grammar-constrained JSON generation) so the
+    model cannot produce syntactically invalid JSON, plus responseMimeType
+    as a belt-and-suspenders instruction."""
     body = {
         "system_instruction": {"parts": [{"text": system_prompt}]},
         "contents": [
@@ -111,6 +238,7 @@ def call_agent(api_key: str, system_prompt: str, user_payload: dict) -> dict:
         "generationConfig": {
             "maxOutputTokens": 4000,
             "responseMimeType": "application/json",
+            "responseSchema": schema,
             "thinkingConfig": {"thinkingLevel": "low"},
         },
     }
@@ -123,7 +251,13 @@ def call_agent(api_key: str, system_prompt: str, user_payload: dict) -> dict:
     resp.raise_for_status()
     data = resp.json()
     raw_text = data["candidates"][0]["content"]["parts"][0]["text"]
-    return json.loads(raw_text)
+    try:
+        return json.loads(raw_text)
+    except json.JSONDecodeError as parse_err:
+        raise RuntimeError(
+            f"JSON parse failed ({parse_err}). Raw model output (first 1500 chars): "
+            f"{raw_text[:1500]}"
+        ) from parse_err
 
 
 def run_pipeline() -> dict:
@@ -148,7 +282,7 @@ def run_pipeline() -> dict:
         "client_activity_data": client_activity,
         "live_grid_carbon_intensity": grid_intensity,
     }
-    researcher_output = call_agent(api_key, researcher_prompt, researcher_input)
+    researcher_output = call_agent(api_key, researcher_prompt, researcher_input, SCHEMAS["researcher"])
     transcript["steps"].append(
         {"agent": "Researcher", "input": researcher_input, "output": researcher_output}
     )
@@ -156,7 +290,7 @@ def run_pipeline() -> dict:
     # 2. Designer
     print("Agent 2/5 — Designer (Idris Halden)...")
     designer_prompt = load_prompt("02_designer.md")
-    designer_output = call_agent(api_key, designer_prompt, researcher_output)
+    designer_output = call_agent(api_key, designer_prompt, researcher_output, SCHEMAS["designer"])
     transcript["steps"].append(
         {"agent": "Designer", "input": researcher_output, "output": designer_output}
     )
@@ -169,7 +303,7 @@ def run_pipeline() -> dict:
         "client_activity_data": client_activity,
         "live_grid_carbon_intensity": grid_intensity,
     }
-    maker_output = call_agent(api_key, maker_prompt, maker_input)
+    maker_output = call_agent(api_key, maker_prompt, maker_input, SCHEMAS["maker"])
     transcript["steps"].append(
         {"agent": "Maker", "input": maker_input, "output": maker_output}
     )
@@ -177,7 +311,7 @@ def run_pipeline() -> dict:
     # 4. Communicator
     print("Agent 4/5 — Communicator (Sam Rourke)...")
     communicator_prompt = load_prompt("04_communicator.md")
-    communicator_output = call_agent(api_key, communicator_prompt, maker_output)
+    communicator_output = call_agent(api_key, communicator_prompt, maker_output, SCHEMAS["communicator"])
     transcript["steps"].append(
         {"agent": "Communicator", "input": maker_output, "output": communicator_output}
     )
@@ -191,7 +325,7 @@ def run_pipeline() -> dict:
         "calculation_result": maker_output,
         "disclosure_and_messaging_package": communicator_output,
     }
-    manager_output = call_agent(api_key, manager_prompt, manager_input)
+    manager_output = call_agent(api_key, manager_prompt, manager_input, SCHEMAS["manager"])
     transcript["steps"].append(
         {"agent": "Manager", "input": manager_input, "output": manager_output}
     )

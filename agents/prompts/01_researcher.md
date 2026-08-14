@@ -30,8 +30,9 @@ Brief" in JSON containing:
   measured, or entirely absent for this client.
 - `regulatory_exposure`: which current reporting obligations (e.g. CSRD, UK SECR, EU
   ETS) this client is or will soon be exposed to, and why.
-- `grid_context`: the live carbon intensity figure you retrieved, and what it implies
-  for the client's Scope 2 number right now.
+- `grid_context`: an object `{ actual_intensity, forecast_intensity, commentary }` — the
+  live carbon intensity figures you retrieved (in gCO2/kWh), and a short commentary on
+  what they imply for the client's Scope 2 number right now.
 - `opportunity_summary`: 3–5 sentences a Designer could act on immediately — where
   should the firm's next product/service focus?
 
