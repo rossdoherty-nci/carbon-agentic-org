@@ -109,8 +109,9 @@ def call_agent(api_key: str, system_prompt: str, user_payload: dict) -> dict:
             }
         ],
         "generationConfig": {
-            "maxOutputTokens": 2000,
+            "maxOutputTokens": 4000,
             "responseMimeType": "application/json",
+            "thinkingConfig": {"thinkingLevel": "low"},
         },
     }
     resp = requests.post(

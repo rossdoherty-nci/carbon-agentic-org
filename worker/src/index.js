@@ -97,7 +97,11 @@ async function callAgent(env, systemPrompt, userPayload) {
           ],
         },
       ],
-      generationConfig: { maxOutputTokens: 2000, responseMimeType: "application/json" },
+      generationConfig: {
+        maxOutputTokens: 4000,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingLevel: "low" },
+      },
     }),
   });
   if (!resp.ok) {
@@ -170,7 +174,11 @@ async function runConcierge(env, transcript, visitorMessage, history) {
       contents: [
         { role: "user", parts: [{ text: JSON.stringify(payload, null, 2) }] },
       ],
-      generationConfig: { maxOutputTokens: 400, responseMimeType: "application/json" },
+      generationConfig: {
+        maxOutputTokens: 800,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingLevel: "low" },
+      },
     }),
   });
   if (!resp.ok) {
