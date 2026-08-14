@@ -10,7 +10,7 @@
 // explains that live mode isn't wired up yet.
 // ---------------------------------------------------------------------------
 
-const WORKER_URL = "https://verdant-ledger-pipeline.dohertyiptv.workers.dev"; // Cloudflare Worker URL
+const WORKER_URL = "https://verdant-ledger-pipeline.dohertyiptv.workers.dev"; // Cloudflare Worker URL Goes here
 
 let currentTranscript = null;
 let chatHistory = [];
