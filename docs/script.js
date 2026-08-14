@@ -10,7 +10,7 @@
 // explains that live mode isn't wired up yet.
 // ---------------------------------------------------------------------------
 
-const WORKER_URL = ""; // e.g. "https://verdant-ledger-pipeline.YOUR_SUBDOMAIN.workers.dev"
+const WORKER_URL = ""; // e.g. "https://verdant-ledger-pipeline.dohertyiptv.workers.dev"
 
 let currentTranscript = null;
 let chatHistory = [];
