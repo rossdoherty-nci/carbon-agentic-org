@@ -7,6 +7,15 @@ a certified, auditable carbon accounting deliverable.
 Built for **H9CEAI: Customer Engagement and Artificial Intelligence**, National College
 of Ireland, 2026 — *Final Project: Build an Agentic Organisation*.
 
+**LLM backend: Google Gemini API** (`gemini-2.5-flash`), chosen for its genuinely free
+developer tier — no credit card, no expiration, generous enough rate limits for
+repeated development runs. Get a key at https://aistudio.google.com/apikey. One thing
+worth naming explicitly in your submission's Regulatory & Ethical section: on the free
+tier, Google's terms permit using your prompts/responses to improve their models. This
+pipeline only ever processes synthetic demo data, but it's a real consideration for
+any production carbon-accounting deployment handling genuine client data — a paid tier
+or Vertex AI would remove that data-sharing clause.
+
 ## What's live, and why it matters for grading
 
 - **National Grid ESO Carbon Intensity API** (`api.carbonintensity.org.uk`) — queried
@@ -26,7 +35,7 @@ of Ireland, 2026 — *Final Project: Build an Agentic Organisation*.
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env   # fill in ANTHROPIC_API_KEY and CLIENT_SHEET_CSV_URL
+cp .env.example .env   # fill in GOOGLE_API_KEY and CLIENT_SHEET_CSV_URL
 python run_pipeline.py
 ```
 
@@ -63,7 +72,7 @@ The Worker exposes two routes:
 cd worker
 npm install
 npx wrangler login
-npx wrangler secret put ANTHROPIC_API_KEY     # paste your key when prompted — never committed
+npx wrangler secret put GOOGLE_API_KEY     # paste your key when prompted — never committed
 ```
 
 Edit `worker/wrangler.toml`:
@@ -111,7 +120,7 @@ carbon-agentic-org/
 ## Security notes
 
 - No API key or credential is committed anywhere in this repository.
-- The Anthropic API key is only ever held locally in a gitignored `.env`, or as a
+- The Google API key is only ever held locally in a gitignored `.env`, or as a
   Cloudflare Worker **secret** (`wrangler secret put`), which is encrypted at rest and
   never appears in `wrangler.toml` or the repo.
 - The Google Sheet is published read-only; it contains only synthetic demo data.

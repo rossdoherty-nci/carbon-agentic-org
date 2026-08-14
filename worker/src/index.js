@@ -2,18 +2,25 @@
  * Verdant Ledger — live pipeline runner
  *
  * Deployed as a Cloudflare Worker. Called by the "Run pipeline live" button
- * on the GitHub Pages frontend. Runs the same five-agent pipeline as
- * run_pipeline.py, but on demand, in the browser's request path.
+ * (and the concierge chat) on the GitHub Pages frontend. Runs the same
+ * five-agent pipeline as run_pipeline.py, but on demand, in the browser's
+ * request path.
+ *
+ * LLM backend: Google Gemini API. Get a free key (no credit card) at
+ * https://aistudio.google.com/apikey. Note: on the free tier, Google's terms
+ * permit using your prompts/responses to improve their models — worth naming
+ * in your submission's Regulatory & Ethical section.
  *
  * Secrets (set with `wrangler secret put`, NEVER committed to the repo):
- *   ANTHROPIC_API_KEY
+ *   GOOGLE_API_KEY
  *
  * Plain vars (safe to keep in wrangler.toml, not secret):
  *   CLIENT_SHEET_CSV_URL  — published Google Sheet CSV export URL
  *   ALLOWED_ORIGIN        — your GitHub Pages origin, for CORS
  */
 
-const MODEL = "claude-sonnet-4-6";
+const MODEL = "gemini-3.5-flash";
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
 const CARBON_INTENSITY_URL = "https://api.carbonintensity.org.uk/intensity";
 
 const PROMPTS = {
@@ -71,39 +78,34 @@ async function fetchLiveClientActivityData(env) {
 }
 
 async function callAgent(env, systemPrompt, userPayload) {
-  const resp = await fetch("https://api.anthropic.com/v1/messages", {
+  // responseMimeType: "application/json" makes Gemini return clean JSON
+  // directly — no markdown fences to strip.
+  const resp = await fetch(`${GEMINI_URL}?key=${env.GOOGLE_API_KEY}`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": env.ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: MODEL,
-      max_tokens: 2000,
-      system: systemPrompt,
-      messages: [
+      system_instruction: { parts: [{ text: systemPrompt }] },
+      contents: [
         {
           role: "user",
-          content:
-            "Here is your input for this engagement, as JSON. Respond with ONLY " +
-            "the JSON object described in your role — no preamble, no markdown " +
-            "fences.\n\n" +
-            JSON.stringify(userPayload, null, 2),
+          parts: [
+            {
+              text:
+                "Here is your input for this engagement, as JSON.\n\n" +
+                JSON.stringify(userPayload, null, 2),
+            },
+          ],
         },
       ],
+      generationConfig: { maxOutputTokens: 2000, responseMimeType: "application/json" },
     }),
   });
   if (!resp.ok) {
     const errText = await resp.text();
-    throw new Error(`Anthropic API error ${resp.status}: ${errText}`);
+    throw new Error(`Gemini API error ${resp.status}: ${errText}`);
   }
   const data = await resp.json();
-  let text = data.content
-    .filter((b) => b.type === "text")
-    .map((b) => b.text)
-    .join("");
-  text = text.trim().replace(/^```json/i, "").replace(/```$/, "").trim();
+  const text = data.candidates[0].content.parts[0].text;
   return JSON.parse(text);
 }
 
@@ -160,32 +162,23 @@ async function runConcierge(env, transcript, visitorMessage, history) {
     visitor_message: visitorMessage,
     recent_chat_history: history || [],
   };
-  const resp = await fetch("https://api.anthropic.com/v1/messages", {
+  const resp = await fetch(`${GEMINI_URL}?key=${env.GOOGLE_API_KEY}`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": env.ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: MODEL,
-      max_tokens: 400,
-      system: PROMPTS.concierge,
-      messages: [
-        { role: "user", content: JSON.stringify(payload, null, 2) },
+      system_instruction: { parts: [{ text: PROMPTS.concierge }] },
+      contents: [
+        { role: "user", parts: [{ text: JSON.stringify(payload, null, 2) }] },
       ],
+      generationConfig: { maxOutputTokens: 400, responseMimeType: "application/json" },
     }),
   });
   if (!resp.ok) {
     const errText = await resp.text();
-    throw new Error(`Anthropic API error ${resp.status}: ${errText}`);
+    throw new Error(`Gemini API error ${resp.status}: ${errText}`);
   }
   const data = await resp.json();
-  let text = data.content
-    .filter((b) => b.type === "text")
-    .map((b) => b.text)
-    .join("");
-  text = text.trim().replace(/^```json/i, "").replace(/```$/, "").trim();
+  const text = data.candidates[0].content.parts[0].text;
   return JSON.parse(text);
 }
 

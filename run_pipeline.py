@@ -11,11 +11,18 @@ Live data sources (queried at runtime, never hardcoded):
   2. Client activity data — a published Google Sheet, read live via its
      public CSV export URL (no service-account key required)
 
+LLM backend: Google Gemini API (generativelanguage.googleapis.com), used via
+plain HTTPS requests — no SDK dependency required. Get a free key with no
+credit card at https://aistudio.google.com/apikey. Note: on the free tier,
+Google's terms permit using your prompts/responses to improve their models —
+worth naming in your submission's Regulatory & Ethical section, since this
+pipeline processes (synthetic) client emissions data.
+
 Requires:
-  pip install anthropic requests
+  pip install requests
 
 Environment variables (see .env.example):
-  ANTHROPIC_API_KEY
+  GOOGLE_API_KEY
   CLIENT_SHEET_CSV_URL   (the "publish to web" CSV link for your Google Sheet)
 """
 
@@ -25,9 +32,9 @@ import csv
 import io
 import datetime
 import requests
-from anthropic import Anthropic
 
-MODEL = "claude-sonnet-4-6"
+MODEL = "gemini-3.5-flash"
+GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent"
 PROMPTS_DIR = os.path.join(os.path.dirname(__file__), "agents", "prompts")
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "data", "run_outputs")
 DOCS_RESULTS_PATH = os.path.join(os.path.dirname(__file__), "docs", "results.json")
@@ -80,36 +87,51 @@ def fetch_live_client_activity_data() -> dict:
     }
 
 
-def call_agent(client: Anthropic, system_prompt: str, user_payload: dict) -> dict:
+def call_agent(api_key: str, system_prompt: str, user_payload: dict) -> dict:
     """Call one agent with its system prompt and the prior agent's structured
-    output (or the initial live data), and parse its JSON response."""
-    message = client.messages.create(
-        model=MODEL,
-        max_tokens=2000,
-        system=system_prompt,
-        messages=[
+    output (or the initial live data), and parse its JSON response.
+
+    Uses Gemini's responseMimeType: "application/json" so the model returns
+    clean JSON directly, with no markdown fences to strip."""
+    body = {
+        "system_instruction": {"parts": [{"text": system_prompt}]},
+        "contents": [
             {
                 "role": "user",
-                "content": (
-                    "Here is your input for this engagement, as JSON. "
-                    "Respond with ONLY the JSON object described in your role — "
-                    "no preamble, no markdown fences.\n\n"
-                    + json.dumps(user_payload, indent=2)
-                ),
+                "parts": [
+                    {
+                        "text": (
+                            "Here is your input for this engagement, as JSON.\n\n"
+                            + json.dumps(user_payload, indent=2)
+                        )
+                    }
+                ],
             }
         ],
+        "generationConfig": {
+            "maxOutputTokens": 2000,
+            "responseMimeType": "application/json",
+        },
+    }
+    resp = requests.post(
+        GEMINI_URL,
+        params={"key": api_key},
+        json=body,
+        timeout=60,
     )
-    raw_text = "".join(
-        block.text for block in message.content if block.type == "text"
-    )
-    cleaned = raw_text.strip().strip("`")
-    if cleaned.lower().startswith("json"):
-        cleaned = cleaned[4:].strip()
-    return json.loads(cleaned)
+    resp.raise_for_status()
+    data = resp.json()
+    raw_text = data["candidates"][0]["content"]["parts"][0]["text"]
+    return json.loads(raw_text)
 
 
 def run_pipeline() -> dict:
-    client = Anthropic()  # reads ANTHROPIC_API_KEY from env
+    api_key = os.environ.get("GOOGLE_API_KEY")
+    if not api_key:
+        raise RuntimeError(
+            "GOOGLE_API_KEY is not set. Get a free key at "
+            "https://aistudio.google.com/apikey and add it to your .env file."
+        )
     run_started = datetime.datetime.utcnow().isoformat() + "Z"
 
     print("Fetching live data sources...")
@@ -125,7 +147,7 @@ def run_pipeline() -> dict:
         "client_activity_data": client_activity,
         "live_grid_carbon_intensity": grid_intensity,
     }
-    researcher_output = call_agent(client, researcher_prompt, researcher_input)
+    researcher_output = call_agent(api_key, researcher_prompt, researcher_input)
     transcript["steps"].append(
         {"agent": "Researcher", "input": researcher_input, "output": researcher_output}
     )
@@ -133,7 +155,7 @@ def run_pipeline() -> dict:
     # 2. Designer
     print("Agent 2/5 — Designer (Idris Halden)...")
     designer_prompt = load_prompt("02_designer.md")
-    designer_output = call_agent(client, designer_prompt, researcher_output)
+    designer_output = call_agent(api_key, designer_prompt, researcher_output)
     transcript["steps"].append(
         {"agent": "Designer", "input": researcher_output, "output": designer_output}
     )
@@ -146,7 +168,7 @@ def run_pipeline() -> dict:
         "client_activity_data": client_activity,
         "live_grid_carbon_intensity": grid_intensity,
     }
-    maker_output = call_agent(client, maker_prompt, maker_input)
+    maker_output = call_agent(api_key, maker_prompt, maker_input)
     transcript["steps"].append(
         {"agent": "Maker", "input": maker_input, "output": maker_output}
     )
@@ -154,7 +176,7 @@ def run_pipeline() -> dict:
     # 4. Communicator
     print("Agent 4/5 — Communicator (Sam Rourke)...")
     communicator_prompt = load_prompt("04_communicator.md")
-    communicator_output = call_agent(client, communicator_prompt, maker_output)
+    communicator_output = call_agent(api_key, communicator_prompt, maker_output)
     transcript["steps"].append(
         {"agent": "Communicator", "input": maker_output, "output": communicator_output}
     )
@@ -168,7 +190,7 @@ def run_pipeline() -> dict:
         "calculation_result": maker_output,
         "disclosure_and_messaging_package": communicator_output,
     }
-    manager_output = call_agent(client, manager_prompt, manager_input)
+    manager_output = call_agent(api_key, manager_prompt, manager_input)
     transcript["steps"].append(
         {"agent": "Manager", "input": manager_input, "output": manager_output}
     )

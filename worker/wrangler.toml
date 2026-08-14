@@ -7,6 +7,7 @@ compatibility_date = "2026-01-01"
 CLIENT_SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/PASTE_YOUR_PUBLISHED_ID/pub?output=csv"
 ALLOWED_ORIGIN = "https://YOUR_GITHUB_USERNAME.github.io"
 
-# ANTHROPIC_API_KEY is a SECRET — do not put it here.
+# GOOGLE_API_KEY is a SECRET — do not put it here.
+# Get a free key (no credit card) at https://aistudio.google.com/apikey
 # Set it once with:
-#   wrangler secret put ANTHROPIC_API_KEY
+#   wrangler secret put GOOGLE_API_KEY
