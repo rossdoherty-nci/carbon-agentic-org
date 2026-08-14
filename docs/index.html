@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Verdant Ledger — Agentic Carbon Accounting</title>
+<meta name="description" content="Five specialised AI agents, one live pipeline: carbon accounting from opportunity to assurance, with a dashboard and concierge chat.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar__brand">
+    <svg viewBox="0 0 48 48" class="topbar__mark" aria-hidden="true">
+      <path d="M24 4C13 4 5 13 5 24c0 3 1 6 2 8 5-1 10-4 13-9 3 5 8 8 13 9 1-2 2-5 2-8C35 13 35 4 24 4Z" fill="none" stroke="currentColor" stroke-width="1.4"/>
+      <path d="M24 44V16" fill="none" stroke="currentColor" stroke-width="1.4"/>
+    </svg>
+    <div>
+      <h1 class="topbar__title">Verdant Ledger</h1>
+      <p class="topbar__tagline">Carbon accounting, kept honest by five agents and a live grid feed</p>
+    </div>
+  </div>
+  <div class="topbar__status">
+    <span class="topbar__status-dot" id="liveDot" aria-hidden="true"></span>
+    <span id="topbarStatusText">No run yet</span>
+  </div>
+</header>
+
+<main class="layout">
+
+  <!-- ==================== DASHBOARD ==================== -->
+  <section class="dashboard" aria-label="Engagement dashboard">
+
+    <div class="metric-row">
+      <div class="metric-card">
+        <p class="metric-card__label">Total footprint</p>
+        <p class="metric-card__value" id="metricTotal">—</p>
+        <p class="metric-card__unit">kg CO₂e</p>
+      </div>
+      <div class="metric-card">
+        <p class="metric-card__label">Assurance verdict</p>
+        <p class="metric-card__value metric-card__value--verdict" id="metricVerdict">—</p>
+        <p class="metric-card__unit" id="metricVerdictSub">awaiting first run</p>
+      </div>
+      <div class="metric-card">
+        <p class="metric-card__label">Live grid intensity</p>
+        <p class="metric-card__value" id="metricGrid">—</p>
+        <p class="metric-card__unit">gCO₂/kWh, at run time</p>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel__head">
+        <h2 class="panel__title">Emissions by category</h2>
+        <span class="panel__hint">from the Maker agent's live calculation</span>
+      </div>
+      <div id="chartArea" class="chart-area">
+        <p class="empty-note">No calculation yet — run the pipeline to populate this chart.</p>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel__head">
+        <h2 class="panel__title">Pipeline status</h2>
+        <button id="runButton" class="run-button">
+          <span class="run-button__seal" aria-hidden="true">●</span>
+          <span>Run pipeline live</span>
+        </button>
+      </div>
+      <ol class="stepper" id="stepper">
+        <li class="stepper__step" data-agent="Researcher">
+          <span class="stepper__index">01</span>
+          <span class="stepper__label">Researcher<br><small>Vera Sonnet</small></span>
+          <span class="stepper__state" aria-hidden="true"></span>
+        </li>
+        <li class="stepper__step" data-agent="Designer">
+          <span class="stepper__index">02</span>
+          <span class="stepper__label">Designer<br><small>Idris Halden</small></span>
+          <span class="stepper__state" aria-hidden="true"></span>
+        </li>
+        <li class="stepper__step" data-agent="Maker">
+          <span class="stepper__index">03</span>
+          <span class="stepper__label">Maker<br><small>Priya Okafor</small></span>
+          <span class="stepper__state" aria-hidden="true"></span>
+        </li>
+        <li class="stepper__step" data-agent="Communicator">
+          <span class="stepper__index">04</span>
+          <span class="stepper__label">Communicator<br><small>Sam Rourke</small></span>
+          <span class="stepper__state" aria-hidden="true"></span>
+        </li>
+        <li class="stepper__step" data-agent="Manager">
+          <span class="stepper__index">05</span>
+          <span class="stepper__label">Manager<br><small>Odalys Fenn</small></span>
+          <span class="stepper__state" aria-hidden="true"></span>
+        </li>
+      </ol>
+    </div>
+
+    <div class="panel" id="detailPanel" hidden>
+      <div class="panel__head">
+        <h2 class="panel__title">Agent outputs</h2>
+        <span class="panel__hint">full JSON handoff, agent to agent</span>
+      </div>
+      <div id="detailArea" class="detail-area"></div>
+    </div>
+
+  </section>
+
+  <!-- ==================== CHAT ==================== -->
+  <aside class="chat" aria-label="Concierge chat">
+    <div class="chat__head">
+      <h2 class="chat__title">Concierge</h2>
+      <p class="chat__sub">Ask about the results, or say "run the pipeline" for a fresh live pass.</p>
+    </div>
+    <div class="chat__log" id="chatLog">
+      <div class="chat__msg chat__msg--bot">
+        Hello — I'm the Verdant Ledger concierge. I can explain the last engagement's
+        results, or trigger a fresh live run across all five agents. What would you
+        like to know?
+      </div>
+    </div>
+    <form class="chat__form" id="chatForm">
+      <input type="text" id="chatInput" class="chat__input" placeholder="e.g. What's driving the footprint?" autocomplete="off">
+      <button type="submit" class="chat__send">Send</button>
+    </form>
+  </aside>
+
+</main>
+
+<footer class="footer">
+  <p>
+    Live sources: <a href="https://carbonintensity.org.uk/" target="_blank" rel="noopener">National Grid ESO Carbon Intensity API</a>
+    · client activity ledger (published Google Sheet, read at query time)
+  </p>
+  <p class="footer__sub">
+    Built for H9CEAI — Customer Engagement and AI, National College of Ireland, 2026.
+    The Concierge is an interface layer, not one of the five pipeline agents.
+  </p>
+</footer>
+
+<script src="script.js"></script>
+</body>
+</html>

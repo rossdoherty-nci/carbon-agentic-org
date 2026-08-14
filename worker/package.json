@@ -1,0 +1,14 @@
+{
+  "name": "verdant-ledger-worker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Live serverless orchestrator for the Verdant Ledger five-agent carbon accounting pipeline.",
+  "scripts": {
+    "build": "node build.js",
+    "deploy": "npm run build && wrangler deploy dist/index.js",
+    "dev": "npm run build && wrangler dev dist/index.js"
+  },
+  "devDependencies": {
+    "wrangler": "^3.78.0"
+  }
+}

@@ -1,0 +1,10 @@
+category,activity,quantity,unit,notes
+electricity,grid_electricity_consumed,42000,kWh,Head office + two warehouses, annual
+natural_gas,gas_heating_consumed,18500,kWh,Head office boiler, annual
+business_travel,short_haul_flights,64,flights,Sales + client-facing staff, annual
+business_travel,long_haul_flights,9,flights,Executive travel, annual
+fleet,diesel_van_mileage,38000,miles,3-vehicle delivery fleet, annual
+fleet,fuel_purchased,5200,litres,Diesel, annual
+waste,general_waste_landfill,14,tonnes,Annual, unsegregated
+water,mains_water_supplied,3100,cubic_metres,Annual, all sites
+remote_work,employee_home_working_days,9800,days,Estimated across 42 staff, annual
